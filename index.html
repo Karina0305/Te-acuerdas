@@ -434,7 +434,7 @@
   <section class="diary-scene" aria-label="Busca el diario en la habitación" aria-hidden="true">
     <div class="room-pan" role="img" aria-label="Habitación rosa: inclina el teléfono o desliza para explorar hacia los lados"></div>
     <button class="bed-diary" type="button" aria-label="Abrir el diario sobre la alfombra"><img src="assets/diario-piso.png" alt="Diario violeta" draggable="false"></button><h1 class="diary-title">Busca el diario</h1>
-    <button class="motion-enable" type="button">Activar movimiento</button>
+
   </section>
   <section class="diary-closeup" role="dialog" aria-modal="true" aria-label="Diario con contraseña" hidden>
     <button class="diary-back" type="button" aria-label="Volver a la habitación">←</button>
@@ -758,7 +758,7 @@
     updateOrientation();
     const diaryScene = document.querySelector('.diary-scene');
     const roomPan = document.querySelector('.room-pan');
-    const motionButton = document.querySelector('.motion-enable');
+    const motionButton = document.createElement('button'); // Detached: permissions are handled only on the start screen.
     let pan = .5, tilt = 0, baseline = null, roomDragging = null, roomFrame = null;
     let roomTargetPan = .5, lastRoomAlpha = null, roomSensorSeen = false, lastRoomYawTime = 0;
     async function finishSlinky() {
@@ -1366,7 +1366,8 @@
     startButton.addEventListener('click', async () => {
       delete experienceStart.dataset.microphoneError;
       delete experienceStart.dataset.microphone;
-      // Request motion first: fullscreen can consume the initial permission gesture.
+      // iOS orientation permission must be requested directly from this click.
+      const movement = enableRoomMotion();
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (AudioContextClass && !initialAudioContext) initialAudioContext = new AudioContextClass();
       initialAudioContext?.resume().catch(() => {});
@@ -1377,7 +1378,12 @@
       setAudioRoute('playback');
       phoneAudio.muted = true;
       const playback = startPhoneAudio();
-      // Capture first, before opening the separate motion permission prompt.
+      await movement;
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function' && !motionGranted) {
+        experienceStart.querySelector('.start-status').textContent = 'Permite el movimiento para explorar la habitación. Toca Entrar al recuerdo para reintentar.';
+        startButton.disabled = false;
+        return;
+      }
       setAudioRoute('auto');
       const microphone = navigator.mediaDevices?.getUserMedia
         ? navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
@@ -1396,8 +1402,6 @@
 
         return;
       }
-      experienceStart.querySelector('.start-status').textContent = 'Activa el permiso de movimiento para explorar la habitación…';
-      await enableRoomMotion().catch(() => {});
       beginPhoneScene();
     });
     function beginPhoneScene() {
@@ -1733,6 +1737,7 @@
   </script>
 </body>
 </html>
+
 
 
 

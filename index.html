@@ -388,6 +388,15 @@
     .cover-scene .start-original-background { z-index: 0; }
     body:has(.cover-scene) .phone-stage { animation-play-state: paused; }
     @media (prefers-reduced-motion: reduce) { .cover-scene.leaving { transition: none; } }
+    button { touch-action: manipulation; }
+    .password-fallback input { font-size: 16px; }
+    .diary-closeup { touch-action: manipulation; }
+    .diary-book { max-width: calc(100vw - 40px); }
+    .diary-closeup.diary-reading .diary-book { width: min(calc(100vw - 40px), calc((var(--experience-height, 100dvh) - 130px) * .7517)); max-width: calc(100vw - 40px); transform: translateX(0) scale(1); align-self: center; }
+    .diary-closeup.diary-closing .diary-book { transform: translateX(0) scale(.65) !important; }
+    .diary-paper, .reveal-text { touch-action: none; }
+    .experience-start-button { touch-action: manipulation; }
+      .cover-open .cover-start-caption { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); white-space: nowrap; padding: 8px 18px; border-radius: 999px; color: white; background: #a900506b; text-shadow: 0 1px 3px #790037; font: 600 clamp(16px, 4.5vw, 22px)/1.3 system-ui, sans-serif; }
   </style>
 </head>
 <body>
@@ -751,7 +760,7 @@
     const roomPan = document.querySelector('.room-pan');
     const motionButton = document.querySelector('.motion-enable');
     let pan = .5, tilt = 0, baseline = null, roomDragging = null, roomFrame = null;
-    let roomTargetPan = .5, lastRoomAlpha = null, roomSensorSeen = false;
+    let roomTargetPan = .5, lastRoomAlpha = null, roomSensorSeen = false, lastRoomYawTime = 0;
     async function finishSlinky() {
       if (slinkyFinished) return;
       slinkyFinished = true;
@@ -762,13 +771,15 @@
       baseline = null;
       const permissionRequired = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
       motionButton.hidden = motionGranted || !permissionRequired;
+      roomTargetPan = pan; lastRoomAlpha = null; lastRoomYawTime = 0;
       if (!permissionRequired) window.addEventListener('deviceorientation', readTilt);
+          if (!('ondeviceorientation' in window)) window.addEventListener('deviceorientationabsolute', readTilt);
       let last = performance.now();
       function render(now) {
         const dt = Math.min((now - last) / 1000, .05);
         last = now;
         if (!roomDragging && !diaryOpen) {
-          if (lastRoomAlpha === null) roomTargetPan = Math.max(0, Math.min(1, roomTargetPan + tilt * dt * .36));
+          if (lastRoomAlpha === null || now - lastRoomYawTime > 450) roomTargetPan = Math.max(0, Math.min(1, roomTargetPan + tilt * dt * .42));
           pan += (roomTargetPan - pan) * (1 - Math.exp(-dt * 14));
         }
         roomPan.style.backgroundPosition = `${pan * 100}% center`;
@@ -786,14 +797,18 @@
       roomSensorSeen = true;
       motionButton.hidden = true;
       // Alpha follows looking left/right, rather than just tilting the screen.
-      if (Number.isFinite(event.alpha)) {
+      const heading = Number.isFinite(event.webkitCompassHeading) ? (360 - event.webkitCompassHeading) % 360 : event.alpha;
+      if (Number.isFinite(heading)) {
         if (lastRoomAlpha !== null) {
-          let delta = event.alpha - lastRoomAlpha;
+          let delta = heading - lastRoomAlpha;
           if (delta > 180) delta -= 360;
           if (delta < -180) delta += 360;
-          if (Math.abs(delta) < 35) roomTargetPan = Math.max(0, Math.min(1, roomTargetPan - delta / 95));
+          if (Math.abs(delta) > .12 && Math.abs(delta) < 45) {
+            lastRoomYawTime = performance.now();
+            roomTargetPan = Math.max(0, Math.min(1, roomTargetPan - delta / 80));
+          }
         }
-        lastRoomAlpha = event.alpha;
+        lastRoomAlpha = heading;
       }
       if (Number.isFinite(event.gamma) && Number.isFinite(event.beta)) {
         const angle = screen.orientation?.angle ?? window.orientation ?? 0;
@@ -847,6 +862,7 @@
           motionGranted = true;
           baseline = null;
           window.addEventListener('deviceorientation', readTilt);
+          if (!('ondeviceorientation' in window)) window.addEventListener('deviceorientationabsolute', readTilt);
           motionButton.hidden = true;
         } else { motionButton.hidden = false; }
       } catch (_) { motionButton.hidden = false; }
@@ -1020,6 +1036,7 @@
       checkRevealedWord();
     }
     revealCanvas.addEventListener('pointerdown', event => {
+      if (event.cancelable) event.preventDefault();
       if (!event.isPrimary || !closeup.classList.contains('opening')) return;
       revealPointer = event.pointerId; previousPoint = null; trailPoint = null;
       revealCanvas.setPointerCapture(event.pointerId);
@@ -1179,9 +1196,9 @@
           const direction = dx < 0 ? 1 : -1;
           const atEdge = direction > 0 ? gesture.originX <= -limit + 8 : gesture.originX >= limit - 8;
           if (atEdge) moveMagazinePage(direction);
-          else glideMagazine(gesture.originX - direction * magazine.clientWidth * .95, gesture.originY);
+          else glideMagazine(gesture.originX - direction * magazine.clientWidth * .28, gesture.originY);
         } else if (Math.abs(dy) >= 18) {
-          glideMagazine(gesture.originX, gesture.originY + Math.sign(dy) * magazine.clientHeight * .7);
+          glideMagazine(gesture.originX, gesture.originY + Math.sign(dy) * magazine.clientHeight * .25);
         } else if (magazinePage === 1 && gesture.onHotspot) hotspot.click();
       });
       magazine.addEventListener('pointercancel', () => { magazinePanGesture = null; });
@@ -1361,17 +1378,18 @@
       const playback = startPhoneAudio();
       const movement = enableRoomMotion();
       const microphone = navigator.mediaDevices?.getUserMedia
-        ? navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(stream => {
+        ? navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             initialMicStream = stream;
             setAudioRoute('playback');
             experienceStart.dataset.microphone = 'granted';
-          }).catch(() => { experienceStart.dataset.microphone = 'unavailable'; })
+          }).catch(error => { experienceStart.dataset.microphone = 'unavailable'; experienceStart.dataset.microphoneError = error.name || 'unknown'; })
         : Promise.resolve();
       await Promise.allSettled([playback, microphone, movement]);
 
       if (experienceStart.dataset.microphone === 'unavailable') {
-        experienceStart.querySelector('.start-status').textContent = 'El micrófono no está disponible. Puedes continuar y usar la opción escrita cuando sea necesario.';
-        startButton.textContent = 'Continuar';
+        experienceStart.querySelector('.start-status').textContent = experienceStart.dataset.microphoneError === 'NotAllowedError' ? 'El navegador no autorizó el micrófono. Actívalo en los permisos del sitio; puedes entrar mientras tanto.' : 'No se pudo acceder al micrófono. Cierra otras apps que lo usen y revisa los permisos del sitio.';
+        startButton.textContent = '';
+        startButton.setAttribute('aria-label', 'Entrar al recuerdo');
         startButton.disabled = false;
 
         return;
@@ -1495,6 +1513,7 @@
         lastRoomAlpha = null; baseline = null; roomTargetPan = pan;
         window.removeEventListener('deviceorientation', readTilt);
         window.addEventListener('deviceorientation', readTilt);
+          if (!('ondeviceorientation' in window)) window.addEventListener('deviceorientationabsolute', readTilt);
       }
     });
     const tamagochiScene = document.createElement('section');
@@ -1592,7 +1611,7 @@
         else if (magazine.classList.contains('music-explored')) message = 'Jala la manita.';
         else message = 'Haz círculos sobre la rueda.';
       } else if (magazine.classList.contains('active')) {
-        message = magazinePage === 1 ? 'Mantén y arrastra. Toca lo que brilla.' : 'Mantén y arrastra. Desliza rápido para avanzar.';
+        message = magazinePage === 1 ? 'Desliza para explorar. Toca lo que brilla.' : 'Desliza para explorar. En el extremo, desliza para cambiar de página.';
       } else if (scene.classList.contains('answered')) {
         message = sequenceRunning ? 'Mira las imágenes…' : carouselPlayed ? 'Toca una imagen o desliza.' : 'Desliza el dedo.';
       } else {
@@ -1640,7 +1659,7 @@
       targetY = Math.max(-limitY, Math.min(limitY, targetY));
       const fromX = magazineX, fromY = magazineY, started = performance.now();
       function frame(now) {
-        const t = Math.min(1, (now - started) / 420), eased = 1 - Math.pow(1 - t, 3);
+        const t = Math.min(1, (now - started) / 700), eased = 1 - Math.pow(1 - t, 3);
         magazineX = fromX + (targetX - fromX) * eased;
         magazineY = fromY + (targetY - fromY) * eased;
         applyMagazineView();
@@ -1688,7 +1707,7 @@
     const coverScene = document.createElement('section');
     coverScene.className = 'cover-scene';
     coverScene.setAttribute('aria-label', '¿Te acuerdas?');
-    coverScene.innerHTML = '<div class="cover-art-board"><img src="assets/portada/elementos.png" alt="" aria-hidden="true"><img class="cover-title" src="assets/portada/titulo.png" alt="¿Te acuerdas?"><img class="cover-invitation" src="assets/portada/invitacion.png" alt="Vuelve por un momento a donde empezaron algunos de tus recuerdos"><button class="cover-open" type="button" aria-label="Continuar a Antes de comenzar"></button></div>';
+    coverScene.innerHTML = '<div class="cover-art-board"><img src="assets/portada/elementos.png" alt="" aria-hidden="true"><img class="cover-title" src="assets/portada/titulo.png" alt="¿Te acuerdas?"><img class="cover-invitation" src="assets/portada/invitacion.png" alt="Vuelve por un momento a donde empezaron algunos de tus recuerdos"><button class="cover-open" type="button" aria-label="Continuar a Antes de comenzar"><span class="cover-start-caption">Click para comenzar</span></button></div>';
     const coverBackground = startHeartBackground.cloneNode(true);
     coverScene.prepend(coverBackground);
     document.body.append(coverScene);
@@ -1700,9 +1719,19 @@
       coverScene.classList.add('leaving');
       setTimeout(() => { coverScene.remove(); startButton.focus({ preventScroll: true }); }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 460);
     }, { once: true });
+    closeup.addEventListener('dblclick', event => event.preventDefault());
+    let diaryLastTouchEnd = 0;
+    closeup.addEventListener('touchend', event => {
+      const now = performance.now();
+      if (now - diaryLastTouchEnd < 320 && event.target.closest('.diary-book') && event.cancelable) event.preventDefault();
+      diaryLastTouchEnd = now;
+    }, { passive: false });
   </script>
 </body>
 </html>
+
+
+
 
 
 

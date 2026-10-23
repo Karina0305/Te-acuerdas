@@ -1364,7 +1364,8 @@
     }
     const startButton = experienceStart.querySelector('button');
     startButton.addEventListener('click', async () => {
-      if (experienceStart.dataset.microphone === 'unavailable') { beginPhoneScene(); return; }
+      delete experienceStart.dataset.microphoneError;
+      delete experienceStart.dataset.microphone;
       // Request motion first: fullscreen can consume the initial permission gesture.
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (AudioContextClass && !initialAudioContext) initialAudioContext = new AudioContextClass();
@@ -1376,7 +1377,8 @@
       setAudioRoute('playback');
       phoneAudio.muted = true;
       const playback = startPhoneAudio();
-      const movement = enableRoomMotion();
+      // Capture first, before opening the separate motion permission prompt.
+      setAudioRoute('auto');
       const microphone = navigator.mediaDevices?.getUserMedia
         ? navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             initialMicStream = stream;
@@ -1384,16 +1386,17 @@
             experienceStart.dataset.microphone = 'granted';
           }).catch(error => { experienceStart.dataset.microphone = 'unavailable'; experienceStart.dataset.microphoneError = error.name || 'unknown'; })
         : Promise.resolve();
-      await Promise.allSettled([playback, microphone, movement]);
+      await Promise.allSettled([playback, microphone]);
 
       if (experienceStart.dataset.microphone === 'unavailable') {
-        experienceStart.querySelector('.start-status').textContent = experienceStart.dataset.microphoneError === 'NotAllowedError' ? 'El navegador no autorizó el micrófono. Actívalo en los permisos del sitio; puedes entrar mientras tanto.' : 'No se pudo acceder al micrófono. Cierra otras apps que lo usen y revisa los permisos del sitio.';
+        experienceStart.querySelector('.start-status').textContent = 'No se pudo iniciar el micrófono (' + (experienceStart.dataset.microphoneError || 'API no disponible') + '). Toca Entrar al recuerdo para reintentar.';
         startButton.textContent = '';
         startButton.setAttribute('aria-label', 'Entrar al recuerdo');
         startButton.disabled = false;
 
         return;
       }
+      enableRoomMotion().catch(() => {});
       beginPhoneScene();
     });
     function beginPhoneScene() {
@@ -1681,7 +1684,7 @@
       }
       if (!navigator.mediaDevices?.getUserMedia) return;
       try {
-        initialMicStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        initialMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setAudioRoute('playback');
       } catch (_) { setAudioRoute('playback'); }
     }
@@ -1729,6 +1732,7 @@
   </script>
 </body>
 </html>
+
 
 
 

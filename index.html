@@ -559,7 +559,7 @@
       const origin = hotspot.getBoundingClientRect();
       const target = ipod.getBoundingClientRect();
       magazine.classList.add('ipod-open');
-      fadeBackgroundVolume(0.035);
+      fadeBackgroundVolume(0);
       document.querySelector('.sticky-hand').disabled = true;
       magazine.querySelector('.ipod-full').setAttribute('aria-hidden', 'false');
       magazine.setAttribute('aria-label', 'iPod rosa completo');
@@ -1440,10 +1440,10 @@
     }
     function fadeBackgroundVolume(target) {
       const inPlayer = magazine.classList.contains('ipod-open') && !ipodTaken;
-      desiredBackgroundVolume = inPlayer ? .008 : target;
+      desiredBackgroundVolume = inPlayer ? 0 : target;
       configureBackgroundGain();
       if (backgroundGain) {
-        backgroundMusic.muted = false;
+        backgroundMusic.muted = desiredBackgroundVolume === 0;
         const now = initialAudioContext.currentTime;
         backgroundGain.gain.cancelScheduledValues(now);
         backgroundGain.gain.setTargetAtTime(desiredBackgroundVolume, now, .18);
@@ -1737,6 +1737,7 @@
   </script>
 </body>
 </html>
+
 
 
 

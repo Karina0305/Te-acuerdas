@@ -634,7 +634,7 @@
       if (ipodTaken) return;
       ipodTaken = true; handDrag = null; hand.disabled = true;
       musicAudio.pause();
-      fadeBackgroundVolume(0.22);
+      fadeBackgroundVolume(0.07);
       musicOverlay.style.pointerEvents = 'none';
       cancelAnimationFrame(springFrame);
       const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -887,7 +887,7 @@
       if (correct) { stopDiaryListening(); openDiaryAnimation(); }
     }
     let diaryVoiceFrame = null;
-    function stopDiaryListening() { releaseDiaryMicrophone(); diaryPromptAudio.pause(); cancelAnimationFrame(diaryVoiceFrame); diaryVoiceFrame = null; fadeBackgroundVolume(.22); }
+    function stopDiaryListening() { releaseDiaryMicrophone(); diaryPromptAudio.pause(); cancelAnimationFrame(diaryVoiceFrame); diaryVoiceFrame = null; fadeBackgroundVolume(.07); }
     async function startVoice() {
       stopDiaryListening();
       await acquireDiaryMicrophone();
@@ -1412,8 +1412,8 @@
     const backgroundMusic = new Audio('assets/audio/fondo-cesar.mp3');
     backgroundMusic.preload = 'auto';
     backgroundMusic.loop = true;
-    backgroundMusic.volume = .22;
-    let backgroundGain = null, backgroundSource = null, desiredBackgroundVolume = .22;
+    backgroundMusic.volume = .07;
+    let backgroundGain = null, backgroundSource = null, desiredBackgroundVolume = .07;
     function configureBackgroundGain() {
       if (!backgroundGain && initialAudioContext) {
         try {
@@ -1732,6 +1732,7 @@
   </script>
 </body>
 </html>
+
 
 
 

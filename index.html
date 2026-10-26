@@ -397,6 +397,19 @@
     .diary-paper, .reveal-text { touch-action: none; }
     .experience-start-button { touch-action: manipulation; }
       .cover-open .cover-start-caption { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); white-space: nowrap; padding: 8px 18px; border-radius: 999px; color: white; background: #a900506b; text-shadow: 0 1px 3px #790037; font: 600 clamp(16px, 4.5vw, 22px)/1.3 system-ui, sans-serif; }
+      .section-instruction {
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: #ff3496;
+      font-weight: 800;
+      text-shadow: 0 2px 3px #65002f, 0 0 5px #ff168b, 0 0 11px #ff168b, 0 0 22px #ff0080, 0 0 34px #f00078;
+      -webkit-text-stroke: 0;
+    }
+      .section-instruction { color: #fff; -webkit-text-stroke: 0; text-shadow: 0 2px 5px #52102db3; }
+    .restart-experience { position: absolute; z-index: 3; left: 50%; bottom: max(36px, env(safe-area-inset-bottom)); transform: translateX(-50%); padding: 13px 26px; border: 2px solid #ffc3df; border-radius: 999px; background: #d91670; color: #fff; box-shadow: 0 4px 18px #92004466; font: 700 18px/1.3 system-ui, sans-serif; white-space: nowrap; cursor: pointer; touch-action: manipulation; }
   </style>
 </head>
 <body>
@@ -528,11 +541,11 @@
       if (Math.abs(distance) < 16) {
         if (carouselPlayed) { showMagazine(); return; }
         sequenceRunning = true;
-        advance(1, pictures.length, 110);
+        advance(1, pictures.length, 400);
         return;
       }
       sequenceRunning = true;
-      advance(distance < 0 ? 1 : -1, pictures.length, 110);
+      advance(distance < 0 ? 1 : -1, pictures.length, 400);
     });
     gallery.addEventListener('pointercancel', () => { gesture = null; });
     gallery.addEventListener('keydown', event => {
@@ -1070,9 +1083,9 @@
       const visible = revealContext.getImageData(0, 0, w, h).data;
       let total = 0, shown = 0;
       for (let i = 3; i < original.length; i += 16) {
-        if (original[i] > 100) { total++; if (visible[i] > 90) shown++; }
+        if (original[i] > 100) { total++; if (visible[i] >= original[i] * .85) shown++; }
       }
-      if (total && shown / total >= .995 && revealPointer === null) closeRevealedDiary();
+      if (total && shown / total >= .92) closeRevealedDiary();
     }
     function closeRevealedDiary() {
       revealComplete = true;
@@ -1080,6 +1093,7 @@
       revealContext.drawImage(textLayer, 0, 0);
       endReveal();
       closeup.classList.add('reveal-complete');
+      updateSectionInstruction();
       closeup.setAttribute('aria-label', 'Mensaje revelado. Puedes cerrar el diario cuando quieras');
       document.querySelector('.finish-diary').hidden = false;
     }
@@ -1211,7 +1225,7 @@
       });
     }
     gallery.addEventListener('keydown', event => {
-      if (['Enter', ' '].includes(event.key) && !sequenceRunning) { event.preventDefault(); if (carouselPlayed) showMagazine(); else { sequenceRunning = true; advance(1, pictures.length, 110); } }
+      if (['Enter', ' '].includes(event.key) && !sequenceRunning) { event.preventDefault(); if (carouselPlayed) showMagazine(); else { sequenceRunning = true; advance(1, pictures.length, 400); } }
     });
     function waitForMagazineSwipe() {
       const sheet = magazine.querySelector('.magazine-sheet');
@@ -1307,7 +1321,7 @@
     window.addEventListener('resize', positionMusic);
     const musicWheel = musicOverlay.querySelector('.music-wheel');
     musicWheel.setAttribute('aria-label', 'Haz círculos para cambiar de canción');
-    let wheelGesture = null;
+    let wheelGesture = null, wheelTapTimer = null;
     function wheelPoint(event) {
       const rect = musicWheel.getBoundingClientRect();
       const x = (event.clientX - rect.left - rect.width / 2) / (rect.width / 2);
@@ -1317,11 +1331,12 @@
     musicWheel.addEventListener('pointerdown', event => {
       if (!event.isPrimary || ipodTaken) return;
       const point = wheelPoint(event);
-      wheelGesture = { id: event.pointerId, angle: point.angle, turn: 0 };
+      wheelGesture = { id: event.pointerId, angle: point.angle, turn: 0, x: event.clientX, y: event.clientY, moved: false };
       musicWheel.setPointerCapture(event.pointerId);
     });
     musicWheel.addEventListener('pointermove', event => {
       if (!wheelGesture || event.pointerId !== wheelGesture.id) return;
+      if (Math.hypot(event.clientX - wheelGesture.x, event.clientY - wheelGesture.y) > 12) wheelGesture.moved = true;
       const point = wheelPoint(event);
       if (point.radius < .25 || point.radius > 1.65) { wheelGesture.angle = point.angle; return; }
       let delta = point.angle - wheelGesture.angle;
@@ -1337,7 +1352,15 @@
       }
     });
     function releaseWheel() { wheelGesture = null; }
-    musicWheel.addEventListener('pointerup', releaseWheel);
+    musicWheel.addEventListener('pointerup', event => {
+      if (wheelGesture && event.pointerId === wheelGesture.id && !wheelGesture.moved && !wheelTapTimer) {
+        wheelTapTimer = setTimeout(() => {
+          wheelTapTimer = null;
+          if (!ipodTaken && magazine.classList.contains('ipod-open')) changeIpodSong(1);
+        }, 2000);
+      }
+      releaseWheel();
+    });
     musicWheel.addEventListener('pointercancel', releaseWheel);
     musicWheel.addEventListener('lostpointercapture', releaseWheel);
     musicWheel.addEventListener('keydown', event => {
@@ -1595,6 +1618,8 @@
     sectionInstruction.setAttribute('role', 'status');
     sectionInstruction.setAttribute('aria-live', 'polite');
     document.body.append(sectionInstruction);
+    let instructionTimer = null, pendingInstruction = '';
+    sectionInstruction.hidden = true;
     function updateSectionInstruction() {
       let message = '';
       if (document.querySelector('.final-credits')?.classList.contains('visible')) {
@@ -1603,8 +1628,8 @@
         message = '';
       } else if (!closeup.hidden) {
         if (closeup.classList.contains('book-shut')) message = '';
-        else if (closeup.classList.contains('reveal-complete')) message = 'Lee a tu ritmo.';
-        else if (closeup.classList.contains('opening')) message = 'Pasa el dedo por la página.';
+        else if (closeup.classList.contains('reveal-complete')) message = 'Ya revelaste todo el escrito.';
+        else if (closeup.classList.contains('opening')) message = 'Termina de revelar el escrito.';
         else message = '';
       } else if (tamagochiScene.classList.contains('active')) {
         message = tamagochiState === 'feeding' ? '' : tamagochiState === 'hungry' ? 'Toca un botón para dar comida.' : tamagochiState === 'happy' ? 'Toca un botón para continuar.' : 'Toca un botón.';
@@ -1625,8 +1650,21 @@
       } else {
         message = 'Toca el botón que brilla.';
       }
-      if (sectionInstruction.textContent !== message) sectionInstruction.textContent = message;
-      sectionInstruction.hidden = !message;
+      if (message === pendingInstruction) return;
+      pendingInstruction = message;
+      clearTimeout(instructionTimer);
+      sectionInstruction.hidden = true;
+      sectionInstruction.textContent = '';
+      if (message && closeup.classList.contains('reveal-complete') && !closeup.hidden) {
+        sectionInstruction.textContent = message;
+        sectionInstruction.hidden = false;
+        return;
+      }
+      if (message) instructionTimer = setTimeout(() => {
+        if (pendingInstruction !== message) return;
+        sectionInstruction.textContent = message;
+        sectionInstruction.hidden = false;
+      }, 5000);
     }
     const instructionObserver = new MutationObserver(records => {
       if (records.every(record => record.target === sectionInstruction || sectionInstruction.contains(record.target))) return;
@@ -1693,6 +1731,12 @@
         setAudioRoute('playback');
       } catch (_) { setAudioRoute('playback'); }
     }
+    const restartButton = document.createElement('button');
+    restartButton.type = 'button';
+    restartButton.className = 'restart-experience';
+    restartButton.textContent = 'Volver a comenzar';
+    restartButton.addEventListener('click', () => window.location.reload());
+    credits.append(restartButton);
     const heartRings = credits.querySelector('.credits-heart-rings');
     for (let index = 0; index < 34; index++) {
       const ring = document.createElementNS('http://www.w3.org/2000/svg', 'use');
@@ -1737,6 +1781,14 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
 
 
 
